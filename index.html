@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FocusBox Dashboard</title>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg:      #080b12;
+      --card:    #0d1119;
+      --card2:   #111826;
+      --border:  #1c2535;
+      --border2: #243048;
+      --accent:  #00e5ff;
+      --green:   #00ff9d;
+      --red:     #ff3a5e;
+      --yellow:  #ffcc00;
+      --purple:  #9d4edd;
+      --blue:    #4fc3f7;
+      --text:    #dde6f5;
+      --muted:   #556070;
+    }
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family:'Inter',sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      min-height:100vh;
+      overflow-x:hidden;
+    }
+    body::before {
+      content:''; position:fixed; inset:0;
+      background-image:
+        linear-gradient(rgba(0,229,255,.025) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(0,229,255,.025) 1px,transparent 1px);
+      background-size:48px 48px;
+      z-index:0; pointer-events:none;
+    }
+
+    header {
+      position:sticky; top:0; z-index:100;
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 32px;
+      background:rgba(8,11,18,.9);
+      backdrop-filter:blur(16px);
+      border-bottom:1px solid var(--border);
+      gap:12px; flex-wrap:wrap;
+    }
+    .logo { display:flex; align-items:center; gap:12px; }
+    .logo-icon {
+      width:42px; height:42px; border-radius:11px;
+      border:1px solid var(--accent);
+      display:flex; align-items:center; justify-content:center;
+      font-size:20px; background:rgba(0,229,255,.05);
+    }
+    .logo h1 { font-family:'Orbitron',monospace; font-size:.95rem; font-weight:700; letter-spacing:2px; color:#fff; }
+    .logo p { font-size:.6rem; color:var(--accent); letter-spacing:3px; }
+
+    .header-pills { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+
+    .esp-pill {
+      display:flex; align-items:center; gap:7px;
+      padding:7px 14px; border-radius:20px;
+      border:1px solid var(--border);
+      font-size:.7rem; font-family:'Orbitron',monospace; letter-spacing:1px;
+      transition:all .4s;
+    }
+    .esp-pill.online  { border-color:var(--green); color:var(--green); box-shadow:0 0 18px rgba(0,255,157,.25); }
+    .esp-pill.offline { border-color:var(--red);   color:var(--red); }
+    .esp-pill.stale   { border-color:var(--yellow);color:var(--yellow); }
+    .esp-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+    .esp-pill.online .esp-dot { animation:blink 1.6s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    .fb-pill {
+      display:flex; align-items:center; gap:7px;
+      padding:7px 14px; border-radius:20px;
+      border:1px solid var(--border);
+      font-size:.7rem; font-family:'Orbitron',monospace; letter-spacing:1px; transition:all .4s;
+    }
+    .fb-pill.online  { border-color:var(--accent); color:var(--accent); }
+    .fb-pill.offline { border-color:var(--muted);  color:var(--muted); }
+    .fb-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+    .fb-pill.online .fb-dot { animation:blink 2s ease-in-out infinite; }
+
+    .phone-pill {
+      display:flex; align-items:center; gap:7px;
+      padding:7px 14px; border-radius:20px;
+      border:1px solid var(--border);
+      font-size:.7rem; font-family:'Orbitron',monospace; letter-spacing:1px; transition:all .4s;
+    }
+    .phone-pill.detected { border-color:var(--blue);  color:var(--blue);  box-shadow:0 0 14px rgba(79,195,247,.2); }
+    .phone-pill.absent   { border-color:var(--muted); color:var(--muted); }
+    .phone-pill.alert    { border-color:var(--red);   color:var(--red);   box-shadow:0 0 14px rgba(255,58,94,.3); animation:pillAlert .6s ease-in-out infinite alternate; }
+    @keyframes pillAlert { from{opacity:1} to{opacity:.5} }
+
+    main {
+      position:relative; z-index:1;
+      max-width:1200px; margin:0 auto;
+      padding:28px 20px 60px;
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:18px;
+    }
+
+    .card {
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:24px;
+      position:relative; overflow:hidden;
+      transition:border-color .3s;
+    }
+    .card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:1px;
+      background:linear-gradient(90deg,transparent,rgba(0,229,255,.15),transparent);
+    }
+    .card:hover { border-color:var(--border2); }
+    .card-tag {
+      font-size:.58rem; letter-spacing:3px;
+      text-transform:uppercase; color:var(--muted);
+      font-family:'Orbitron',monospace; margin-bottom:14px;
+    }
+
+    .card-status {
+      grid-column:1/-1;
+      display:flex; align-items:center;
+      justify-content:space-between; gap:24px;
+      padding:28px 32px; flex-wrap:wrap;
+    }
+    .card-status.locked   { border-color:var(--red);   box-shadow:0 0 28px rgba(255,58,94,.2); background:linear-gradient(135deg,#0d1119,#120c10); }
+    .card-status.unlocked { border-color:var(--green);  box-shadow:0 0 28px rgba(0,255,157,.15); background:linear-gradient(135deg,#0d1119,#0a1210); }
+
+    .status-main { font-family:'Orbitron',monospace; font-size:3.4rem; font-weight:900; letter-spacing:-1px; line-height:1; }
+    .status-main.locked   { color:var(--red);  text-shadow:0 0 24px rgba(255,58,94,.5); }
+    .status-main.unlocked { color:var(--green); text-shadow:0 0 24px rgba(0,255,157,.4); }
+    .status-sub { margin-top:10px; font-size:.85rem; color:var(--muted); line-height:1.5; }
+    .status-meta { display:flex; gap:16px; margin-top:16px; flex-wrap:wrap; }
+    .status-meta span { font-size:.7rem; color:var(--muted); }
+    .status-meta span b { color:var(--blue); font-weight:500; }
+
+    .box-visual {
+      width:120px; height:120px; border-radius:20px;
+      border:2px solid var(--border2);
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      font-size:3rem; position:relative;
+      transition:all .5s cubic-bezier(.34,1.56,.64,1);
+      background:rgba(255,255,255,.02); flex-shrink:0;
+    }
+    .box-visual.locked   { border-color:var(--red);  box-shadow:0 0 24px rgba(255,58,94,.3); }
+    .box-visual.unlocked { border-color:var(--green); box-shadow:0 0 24px rgba(0,255,157,.2); }
+
+    .servo-row { display:flex; gap:8px; margin-top:12px; }
+    .servo-badge {
+      font-size:.6rem; font-family:'Orbitron',monospace;
+      padding:4px 8px; border-radius:6px;
+      border:1px solid var(--border2); color:var(--accent); transition:all .4s;
+    }
+    .servo-badge.active { border-color:var(--accent); box-shadow:0 0 8px rgba(0,229,255,.25); }
+
+    .timer-display { font-family:'Orbitron',monospace; font-size:2.8rem; font-weight:700; color:var(--yellow); letter-spacing:5px; text-shadow:0 0 20px rgba(255,204,0,.4); }
+    .timer-sub { font-size:.7rem; color:var(--muted); margin-top:5px; }
+    .progress-wrap { margin-top:18px; }
+    .progress-label { display:flex; justify-content:space-between; font-size:.68rem; color:var(--muted); margin-bottom:5px; }
+    .progress-track { height:4px; background:var(--border); border-radius:4px; overflow:hidden; }
+    .progress-fill { height:100%; background:linear-gradient(90deg,var(--yellow),var(--accent)); border-radius:4px; width:0%; transition:width 1s linear; }
+
+    .stats-row { grid-column:1/-1; display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
+    .stat-num { font-family:'Orbitron',monospace; font-size:1.9rem; font-weight:700; color:var(--blue); line-height:1; }
+    .stat-unit { font-size:.72rem; color:var(--muted); margin-top:5px; }
+
+    .phone-status-card { grid-column:3; }
+    .phone-big { font-size:3.5rem; margin:12px 0 8px; text-align:center; }
+    .phone-label { text-align:center; font-family:'Orbitron',monospace; font-size:1rem; font-weight:700; }
+    .phone-label.detected { color:var(--blue); text-shadow:0 0 14px rgba(79,195,247,.4); }
+    .phone-label.absent   { color:var(--muted); }
+    .phone-label.alert    { color:var(--red); animation:pillAlert .5s ease-in-out infinite alternate; }
+    .phone-sub { text-align:center; font-size:.72rem; color:var(--muted); margin-top:6px; }
+
+    .card-controls { grid-column:1/3; }
+    .controls-body { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:4px; }
+    label { display:block; font-size:.7rem; color:var(--muted); margin-bottom:7px; letter-spacing:1px; text-transform:uppercase; }
+    input[type="number"], input[type="password"], input[type="text"], input[type="time"] {
+      width:100%; padding:11px 14px;
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--border2);
+      border-radius:9px; color:var(--text);
+      font-size:.88rem; font-family:'Inter',sans-serif;
+      transition:border-color .2s; outline:none;
+    }
+    input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,229,255,.1); }
+    .btn-row { display:flex; gap:10px; margin-top:14px; }
+    .btn {
+      flex:1; padding:12px 16px; border:none; border-radius:11px;
+      font-size:.82rem; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif;
+      transition:all .2s cubic-bezier(.34,1.56,.64,1);
+    }
+    .btn:hover { transform:translateY(-2px); }
+    .btn:active { transform:scale(.97); }
+    .btn:disabled { opacity:.3; cursor:not-allowed; transform:none; }
+    .btn-lock   { background:linear-gradient(135deg,#ff3a5e,#cc2244); color:#fff; box-shadow:0 4px 18px rgba(255,58,94,.3); }
+    .btn-unlock { background:linear-gradient(135deg,#00ff9d,#00bb77); color:#000; box-shadow:0 4px 18px rgba(0,255,157,.3); }
+    .btn-emg    { background:transparent; border:1px solid var(--yellow); color:var(--yellow); font-size:.75rem; }
+    .btn-emg:hover:not(:disabled) { background:rgba(255,204,0,.08); }
+
+    .card-schedule { grid-column:3; grid-row:span 2; }
+    .schedule-row { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); }
+    .schedule-row:last-of-type { border-bottom:none; }
+    .schedule-name { font-size:.83rem; font-weight:500; }
+    .schedule-time { font-family:'Orbitron',monospace; font-size:.72rem; color:var(--accent); }
+    .toggle { width:40px; height:22px; border-radius:11px; background:var(--border2); position:relative; cursor:pointer; transition:background .3s; border:none; flex-shrink:0; }
+    .toggle.active { background:var(--accent); }
+    .toggle::after { content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:3px; left:3px; transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
+    .toggle.active::after { transform:translateX(18px); }
+    .schedule-form { margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .btn-save { grid-column:1/-1; padding:11px; background:linear-gradient(135deg,var(--accent),#0099aa); color:#000; font-weight:700; border:none; border-radius:9px; cursor:pointer; font-size:.82rem; transition:all .2s; }
+    .btn-save:hover { transform:translateY(-2px); box-shadow:0 0 20px rgba(0,229,255,.3); }
+
+    .card-chart { grid-column:1/3; }
+
+    .card-log { grid-column:1/-1; }
+    .log-list { max-height:190px; overflow-y:auto; display:flex; flex-direction:column; gap:5px; margin-top:8px; }
+    .log-list::-webkit-scrollbar { width:3px; }
+    .log-list::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+    .log-item { display:flex; align-items:flex-start; gap:10px; padding:9px 12px; border-radius:9px; font-size:.78rem; border:1px solid transparent; animation:fadeIn .3s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:translateY(0)} }
+    .log-item.lock   { background:rgba(255,58,94,.06);  border-color:rgba(255,58,94,.15); }
+    .log-item.unlock { background:rgba(0,255,157,.06);  border-color:rgba(0,255,157,.15); }
+    .log-item.warn   { background:rgba(255,204,0,.06);  border-color:rgba(255,204,0,.15); }
+    .log-item.info   { background:rgba(0,229,255,.04);  border-color:rgba(0,229,255,.1); }
+    .log-item.error  { background:rgba(255,58,94,.1);   border-color:rgba(255,58,94,.3); }
+    .log-time { font-family:'Orbitron',monospace; font-size:.62rem; color:var(--muted); min-width:62px; }
+    .log-icon { min-width:15px; }
+
+    /* ── AI PANEL ── */
+    .card-ai { grid-column:1/-1; }
+    .ai-tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+    .ai-tab {
+      padding:8px 16px; border-radius:20px; border:1px solid var(--border2);
+      background:transparent; color:var(--muted); font-size:.72rem;
+      font-family:'Orbitron',monospace; letter-spacing:1px; cursor:pointer; transition:all .25s;
+    }
+    .ai-tab:hover { border-color:var(--purple); color:var(--purple); }
+    .ai-tab.active { border-color:var(--purple); color:var(--purple); background:rgba(157,78,221,.12); box-shadow:0 0 14px rgba(157,78,221,.2); }
+
+    .ai-pane { display:none; }
+    .ai-pane.active { display:block; animation:fadeIn .3s ease; }
+
+    /* AI Chat */
+    .chat-messages {
+      min-height:200px; max-height:280px; overflow-y:auto;
+      border:1px solid var(--border2); border-radius:12px;
+      padding:14px; margin-bottom:12px;
+      display:flex; flex-direction:column; gap:10px;
+      background:rgba(0,0,0,.3);
+    }
+    .chat-messages::-webkit-scrollbar { width:3px; }
+    .chat-messages::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+    .chat-msg { max-width:85%; padding:10px 14px; border-radius:12px; font-size:.83rem; line-height:1.5; }
+    .chat-msg.user { align-self:flex-end; background:rgba(0,229,255,.12); border:1px solid rgba(0,229,255,.2); color:var(--text); }
+    .chat-msg.ai   { align-self:flex-start; background:rgba(157,78,221,.1); border:1px solid rgba(157,78,221,.25); color:var(--text); }
+    .chat-msg.ai .msg-label { font-size:.6rem; color:var(--purple); font-family:'Orbitron',monospace; letter-spacing:2px; margin-bottom:4px; }
+    .chat-msg.thinking { opacity:.5; font-style:italic; }
+
+    .chat-input-row { display:flex; gap:10px; }
+    .chat-input-row input {
+      flex:1; padding:11px 14px;
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--border2);
+      border-radius:9px; color:var(--text);
+      font-size:.88rem; font-family:'Inter',sans-serif;
+      outline:none; transition:border-color .2s;
+    }
+    .chat-input-row input:focus { border-color:var(--purple); }
+    .btn-ai-send {
+      padding:11px 20px; border:none; border-radius:9px;
+      background:linear-gradient(135deg,var(--purple),#7b2fd4);
+      color:#fff; font-weight:600; font-size:.83rem; cursor:pointer;
+      transition:all .2s; white-space:nowrap;
+    }
+    .btn-ai-send:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(157,78,221,.4); }
+    .btn-ai-send:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+    .chat-quick-btns { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+    .quick-btn {
+      padding:5px 11px; border-radius:14px; border:1px solid var(--border2);
+      background:transparent; color:var(--muted); font-size:.68rem; cursor:pointer;
+      transition:all .2s;
+    }
+    .quick-btn:hover { border-color:var(--purple); color:var(--purple); background:rgba(157,78,221,.07); }
+
+    /* AI Suggestions */
+    .ai-suggestion-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+    .suggestion-card {
+      background:rgba(157,78,221,.07); border:1px solid rgba(157,78,221,.2);
+      border-radius:12px; padding:16px; cursor:pointer; transition:all .25s;
+    }
+    .suggestion-card:hover { border-color:var(--purple); box-shadow:0 0 14px rgba(157,78,221,.2); transform:translateY(-2px); }
+    .suggestion-card .sug-label { font-size:.6rem; font-family:'Orbitron',monospace; color:var(--purple); letter-spacing:2px; margin-bottom:8px; }
+    .suggestion-card .sug-val { font-family:'Orbitron',monospace; font-size:1.6rem; font-weight:700; color:var(--yellow); }
+    .suggestion-card .sug-unit { font-size:.7rem; color:var(--muted); margin-top:4px; }
+    .suggestion-card .sug-reason { font-size:.72rem; color:var(--text); margin-top:10px; line-height:1.5; }
+    .btn-apply-sug { margin-top:10px; padding:7px 14px; border-radius:8px; border:1px solid var(--purple); background:transparent; color:var(--purple); font-size:.7rem; cursor:pointer; transition:all .2s; width:100%; }
+    .btn-apply-sug:hover { background:rgba(157,78,221,.15); }
+
+    /* AI Schedule */
+    .ai-schedule-wrap { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .ai-sched-card { background:rgba(0,229,255,.05); border:1px solid rgba(0,229,255,.15); border-radius:12px; padding:16px; }
+    .ai-sched-card .sched-type { font-size:.6rem; font-family:'Orbitron',monospace; color:var(--accent); letter-spacing:2px; margin-bottom:8px; }
+    .ai-sched-card .sched-times { font-family:'Orbitron',monospace; font-size:1.2rem; color:var(--text); margin-bottom:8px; }
+    .ai-sched-card .sched-reason { font-size:.72rem; color:var(--muted); line-height:1.5; }
+    .btn-apply-sched { margin-top:12px; padding:7px 14px; border-radius:8px; border:none; background:linear-gradient(135deg,var(--accent),#0099aa); color:#000; font-size:.72rem; font-weight:700; cursor:pointer; transition:all .2s; width:100%; }
+    .btn-apply-sched:hover { transform:translateY(-1px); box-shadow:0 0 12px rgba(0,229,255,.3); }
+    .ai-analyze-btn {
+      margin-bottom:16px; padding:11px 20px; border:none; border-radius:10px;
+      background:linear-gradient(135deg,var(--purple),#7b2fd4);
+      color:#fff; font-weight:600; font-size:.83rem; cursor:pointer;
+      transition:all .2s; display:flex; align-items:center; gap:8px;
+    }
+    .ai-analyze-btn:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(157,78,221,.4); }
+    .ai-analyze-btn:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+    .ai-status-bar {
+      padding:10px 14px; border-radius:9px;
+      background:rgba(157,78,221,.08); border:1px solid rgba(157,78,221,.2);
+      font-size:.75rem; color:var(--purple); margin-bottom:14px;
+      display:none; align-items:center; gap:8px;
+    }
+    .ai-status-bar.show { display:flex; }
+    .ai-spinner { width:12px; height:12px; border:2px solid rgba(157,78,221,.3); border-top-color:var(--purple); border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    #toast {
+      position:fixed; bottom:28px; left:50%;
+      transform:translateX(-50%) translateY(20px);
+      padding:12px 24px; border-radius:12px;
+      font-size:.86rem; font-weight:500;
+      opacity:0; pointer-events:none;
+      transition:all .35s cubic-bezier(.34,1.56,.64,1);
+      z-index:999; text-align:center; max-width:88%;
+    }
+    #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+    #toast.success { background:rgba(0,255,157,.15); border:1px solid rgba(0,255,157,.4); color:var(--green); }
+    #toast.error   { background:rgba(255,58,94,.15);  border:1px solid rgba(255,58,94,.4);  color:var(--red); }
+    #toast.warn    { background:rgba(255,204,0,.12);  border:1px solid rgba(255,204,0,.35); color:var(--yellow); }
+
+    .modal-overlay { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.75); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .25s; }
+    .modal-overlay.open { opacity:1; pointer-events:all; }
+    .modal { background:var(--card2); border:1px solid var(--border2); border-radius:18px; padding:28px; width:100%; max-width:400px; transform:scale(.95); transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
+    .modal-overlay.open .modal { transform:scale(1); }
+    .modal h2 { font-family:'Orbitron',monospace; font-size:.95rem; margin-bottom:18px; color:var(--yellow); }
+    .modal-btns { display:flex; gap:10px; margin-top:18px; }
+    .btn-modal-ok  { flex:1; padding:12px; background:var(--yellow); color:#000; border:none; border-radius:9px; font-weight:700; font-size:.83rem; cursor:pointer; }
+    .btn-modal-cancel { flex:1; padding:12px; background:transparent; border:1px solid var(--border2); color:var(--muted); border-radius:9px; font-size:.83rem; cursor:pointer; }
+
+    @media(max-width:900px){
+      main { grid-template-columns:1fr 1fr; }
+      .stats-row { grid-template-columns:1fr 1fr; }
+      .card-status { flex-direction:column; }
+      .card-schedule,.card-controls { grid-column:1/-1; grid-row:auto; }
+      .card-chart { grid-column:1/-1; }
+      .phone-status-card { grid-column:1/-1; }
+      .ai-suggestion-grid { grid-template-columns:1fr 1fr; }
+      .ai-schedule-wrap { grid-template-columns:1fr; }
+    }
+    @media(max-width:540px){
+      main { grid-template-columns:1fr; padding:12px 12px 48px; }
+      .stats-row { grid-template-columns:1fr 1fr; }
+      .status-main { font-size:2.4rem; }
+      .timer-display { font-size:2rem; }
+      .controls-body { grid-template-columns:1fr; }
+      .ai-suggestion-grid { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">📱</div>
+    <div>
+      <h1>FOCUSBOX</h1>
+      <p>MOBILE ADDICTION CONTROL</p>
+    </div>
+  </div>
+  <div class="header-pills">
+    <div class="fb-pill offline" id="fbPill">
+      <div class="fb-dot"></div>
+      <span id="fbText">FIREBASE</span>
+    </div>
+    <div class="esp-pill offline" id="espPill">
+      <div class="esp-dot"></div>
+      <span id="espText">ESP32 OFFLINE</span>
+    </div>
+    <div class="phone-pill absent" id="phonePill" style="display:none">
+      <span id="phoneIcon">📱</span>
+      <span id="phoneText">NO PHONE</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- STATUS -->
+  <div class="card card-status unlocked" id="statusCard">
+    <div>
+      <div class="card-tag">System Status</div>
+      <div class="status-main unlocked" id="statusMain">UNLOCKED</div>
+      <div class="status-sub" id="statusSub">Box is open — place phone inside and lock.</div>
+      <div class="status-meta">
+        <span>WiFi: <b id="wifiVal">--</b></span>
+        <span>ESP32 seen: <b id="lastSeenVal">--</b></span>
+        <span>RSSI: <b id="rssiVal">--</b> dBm</span>
+        <span>Sessions: <b id="sessVal">0</b></span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+      <div class="box-visual unlocked" id="boxVisual">
+        <span id="boxEmoji">📦</span>
+      </div>
+      <div class="servo-row">
+        <div class="servo-badge" id="s1badge">S1: 90°</div>
+        <div class="servo-badge" id="s2badge">S2: 180°</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COUNTDOWN -->
+  <div class="card">
+    <div class="card-tag">Time Remaining</div>
+    <div class="timer-display" id="timerDisplay">--:--:--</div>
+    <div class="timer-sub">HH : MM : SS</div>
+    <div class="progress-wrap">
+      <div class="progress-label"><span>Progress</span><span id="progressPct">0%</span></div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+
+  <!-- PHONE STATUS -->
+  <div class="card phone-status-card" id="phoneCard">
+    <div class="card-tag">Phone Inside Box</div>
+    <div class="phone-big" id="phoneBig">📦</div>
+    <div class="phone-label absent" id="phoneLabel">BOX OPEN</div>
+    <div class="phone-sub" id="phoneSub">Sensor active only when locked</div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="card">
+      <div class="card-tag">Daily Lock</div>
+      <div class="stat-num" id="dailyUsage">0</div>
+      <div class="stat-unit">minutes locked today</div>
+    </div>
+    <div class="card">
+      <div class="card-tag">Total Sessions</div>
+      <div class="stat-num" id="totalSessions">0</div>
+      <div class="stat-unit">lock sessions total</div>
+    </div>
+    <div class="card">
+      <div class="card-tag">Longest Lock</div>
+      <div class="stat-num" id="longestLock">0</div>
+      <div class="stat-unit">minutes (best session)</div>
+    </div>
+    <div class="card">
+      <div class="card-tag">Weekly Total</div>
+      <div class="stat-num" id="weeklyUsage">0</div>
+      <div class="stat-unit">minutes this week</div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="card card-controls">
+    <div class="card-tag">Parent Controls</div>
+    <div class="controls-body">
+      <div>
+        <label>Lock Duration (minutes)</label>
+        <input type="number" id="durationInput" value="45" min="1" max="300"/>
+      </div>
+      <div>
+        <label>Admin PIN</label>
+        <input type="password" id="pinInput" placeholder="Enter PIN" maxlength="8"/>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-lock"   id="lockBtn"   onclick="sendLock()">🔒 Lock Box</button>
+      <button class="btn btn-unlock" id="unlockBtn" onclick="sendUnlock()" disabled>🔓 Unlock</button>
+      <button class="btn btn-emg"    onclick="openEmergencyModal()">⚠️ Emergency</button>
+    </div>
+  </div>
+
+  <!-- SCHEDULE -->
+  <div class="card card-schedule">
+    <div class="card-tag">Auto-Schedule</div>
+    <div class="schedule-row">
+      <div>
+        <div class="schedule-name">📚 Study Time</div>
+        <div class="schedule-time" id="studyTimeDisplay">Not set</div>
+      </div>
+      <button class="toggle" id="studyToggle" onclick="toggleSchedule('study')"></button>
+    </div>
+    <div class="schedule-row">
+      <div>
+        <div class="schedule-name">😴 Sleep Time</div>
+        <div class="schedule-time" id="sleepTimeDisplay">Not set</div>
+      </div>
+      <button class="toggle" id="sleepToggle" onclick="toggleSchedule('sleep')"></button>
+    </div>
+    <div class="schedule-form">
+      <div><label>Start</label><input type="time" id="schedStart" value="19:00"/></div>
+      <div><label>End</label><input type="time" id="schedEnd" value="21:00"/></div>
+      <div>
+        <label>Type</label>
+        <select id="schedType" style="width:100%;padding:11px 14px;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-size:.88rem;outline:none;">
+          <option value="study">Study</option>
+          <option value="sleep">Sleep</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end;">
+        <button class="btn-save" onclick="saveSchedule()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="card card-chart">
+    <div class="card-tag">Weekly Lock Activity (minutes)</div>
+    <canvas id="weeklyChart" height="90"></canvas>
+  </div>
+
+  <!-- ── AI PANEL ── -->
+  <div class="card card-ai">
+    <div class="card-tag">🤖 AI Assistant — Powered by Claude</div>
+    <div class="ai-tabs">
+      <button class="ai-tab active" onclick="switchAiTab('chat')">💬 Chat</button>
+      <button class="ai-tab" onclick="switchAiTab('suggest')">📊 Lock Suggestions</button>
+      <button class="ai-tab" onclick="switchAiTab('schedule')">⏰ Auto-Schedule AI</button>
+    </div>
+
+    <!-- CHAT PANE -->
+    <div class="ai-pane active" id="pane-chat">
+      <div class="chat-quick-btns">
+        <button class="quick-btn" onclick="quickAsk('How is my child doing this week?')">📈 Weekly Summary</button>
+        <button class="quick-btn" onclick="quickAsk('Should I lock the phone right now?')">🔒 Should I lock?</button>
+        <button class="quick-btn" onclick="quickAsk('What is the best lock duration for a school night?')">🏫 School night?</button>
+        <button class="quick-btn" onclick="quickAsk('My child keeps removing the phone. What should I do?')">⚠️ Tamper advice</button>
+      </div>
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg ai">
+          <div class="msg-label">FOCUSBOX AI</div>
+          Hello! I'm your FocusBox AI assistant. I can see your child's usage data in real-time. Ask me anything about managing screen time, lock schedules, or how your child is doing!
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" placeholder="Ask anything about your child's screen time..." onkeydown="if(event.key==='Enter')sendChat()"/>
+        <button class="btn-ai-send" id="chatSendBtn" onclick="sendChat()">Send ✦</button>
+      </div>
+    </div>
+
+    <!-- SUGGESTIONS PANE -->
+    <div class="ai-pane" id="pane-suggest">
+      <div class="ai-status-bar" id="sugStatusBar">
+        <div class="ai-spinner"></div>
+        <span id="sugStatusText">Analyzing usage patterns...</span>
+      </div>
+      <button class="ai-analyze-btn" onclick="generateSuggestions()">✦ Analyze Habits &amp; Generate Suggestions</button>
+      <div class="ai-suggestion-grid" id="suggestionGrid">
+        <div class="suggestion-card" style="opacity:.4;pointer-events:none">
+          <div class="sug-label">STUDY SESSION</div>
+          <div class="sug-val">--</div>
+          <div class="sug-unit">minutes</div>
+          <div class="sug-reason">Run analysis to get personalized suggestions</div>
+        </div>
+        <div class="suggestion-card" style="opacity:.4;pointer-events:none">
+          <div class="sug-label">BEDTIME LOCK</div>
+          <div class="sug-val">--</div>
+          <div class="sug-unit">minutes</div>
+          <div class="sug-reason">Run analysis to get personalized suggestions</div>
+        </div>
+        <div class="suggestion-card" style="opacity:.4;pointer-events:none">
+          <div class="sug-label">WEEKEND LOCK</div>
+          <div class="sug-val">--</div>
+          <div class="sug-unit">minutes</div>
+          <div class="sug-reason">Run analysis to get personalized suggestions</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCHEDULE PANE -->
+    <div class="ai-pane" id="pane-schedule">
+      <div class="ai-status-bar" id="schedStatusBar">
+        <div class="ai-spinner"></div>
+        <span id="schedStatusText">Analyzing patterns...</span>
+      </div>
+      <button class="ai-analyze-btn" onclick="generateSchedule()">✦ Generate Smart Schedule</button>
+      <div class="ai-schedule-wrap" id="scheduleGrid">
+        <div class="ai-sched-card" style="opacity:.4">
+          <div class="sched-type">📚 STUDY SCHEDULE</div>
+          <div class="sched-times">Run analysis first</div>
+          <div class="sched-reason">AI will suggest optimal study lock times based on your child's habits.</div>
+        </div>
+        <div class="ai-sched-card" style="opacity:.4">
+          <div class="sched-type">😴 SLEEP SCHEDULE</div>
+          <div class="sched-times">Run analysis first</div>
+          <div class="sched-reason">AI will suggest bedtime lock to ensure proper sleep.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div class="card card-log">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="card-tag" style="margin:0;">Activity Log</div>
+      <button onclick="clearLog()" style="font-size:.68rem;color:var(--muted);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">Clear</button>
+    </div>
+    <div class="log-list" id="logList">
+      <div class="log-item info"><div class="log-time">--:--:--</div><div class="log-icon">ℹ️</div><div>Dashboard loaded — connecting to Firebase...</div></div>
+    </div>
+  </div>
+
+</main>
+
+<!-- EMERGENCY MODAL -->
+<div class="modal-overlay" id="emergencyModal">
+  <div class="modal">
+    <h2>⚠️ Emergency Unlock</h2>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px;">Enter emergency password to force-open the box. This is logged.</p>
+    <label>Emergency Password</label>
+    <input type="password" id="emergencyPin" placeholder="Emergency password"/>
+    <div class="modal-btns">
+      <button class="btn-modal-cancel" onclick="closeEmergencyModal()">Cancel</button>
+      <button class="btn-modal-ok"     onclick="emergencyUnlock()">Unlock Now</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Watermark -->
+<div style="
+  position:fixed;
+  bottom:10px;
+  right:14px;
+  z-index:9999;
+  font-family:'Orbitron',monospace;
+  font-size:0.55rem;
+  letter-spacing:1.5px;
+  color:rgba(0,229,255,0.35);
+  pointer-events:none;
+  user-select:none;
+">Vinayak Shankar Lohar</div>
+
+<script>
+// ============================================================
+//  CONFIG
+// ============================================================
+const firebaseConfig = {
+  apiKey:            "YOUR_FIREBASE_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.asia-southeast1.firebasedatabase.app/",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.firebasestorage.app",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+
+const ADMIN_PIN      = "YOUR_ADMIN_PIN";    // Set your PIN here
+const EMERGENCY_PASS = "YOUR_EMERGENCY_PASSWORD"; // Set your emergency password here
+
+// ============================================================
+//  STATE
+// ============================================================
+let isLocked      = false;
+let lockDurationS = 0;
+let lockRemaining = 0;
+let phoneInside   = false;
+let lastEsp32Seen = 0;
+let weeklyData    = [0,0,0,0,0,0,0];
+let statsSnapshot = {};
+
+// ============================================================
+//  FIREBASE
+// ============================================================
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ============================================================
+//  CHART
+// ============================================================
+const weekChart = new Chart(
+  document.getElementById('weeklyChart').getContext('2d'),
+  {
+    type:'bar',
+    data:{
+      labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+      datasets:[{
+        label:'Lock minutes',
+        data:weeklyData,
+        backgroundColor:'rgba(0,229,255,.18)',
+        borderColor:'rgba(0,229,255,.7)',
+        borderWidth:2, borderRadius:7,
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#556070',font:{family:'Orbitron',size:10}}},
+        y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#556070'},beginAtZero:true}
+      }
+    }
+  }
+);
+
+// ============================================================
+//  FIREBASE LISTENERS
+// ============================================================
+db.ref('/box/status').on('value', snap => {
+  const val = snap.val() || 'UNLOCKED';
+  isLocked = (val === 'LOCKED');
+  updateStatusUI();
+  addLog('Box: ' + val, isLocked ? 'lock' : 'unlock', isLocked ? '🔒' : '🔓');
+});
+
+db.ref('/box/remaining').on('value', snap => {
+  lockRemaining = snap.val() || 0;
+  updateTimer();
+});
+
+db.ref('/box/lockDuration').on('value', snap => {
+  lockDurationS = (snap.val() || 0) * 60;
+});
+
+db.ref('/box/phoneInside').on('value', snap => {
+  const prev = phoneInside;
+  phoneInside = snap.val() || false;
+  updatePhoneUI();
+  if (phoneInside !== prev) {
+    addLog(
+      phoneInside ? '📱 Phone detected inside box' : '📱 Phone removed from box',
+      phoneInside ? 'info' : 'warn',
+      phoneInside ? '📱' : '⚠️'
+    );
+  }
+});
+
+db.ref('/box/alert').on('value', snap => {
+  const alert = snap.val();
+  if (alert && alert !== 'OK') {
+    if (alert === 'PHONE_REMOVED_WHILE_LOCKED') {
+      toast('⚠️ Phone removed while box is locked!', 'error');
+      addLog('ALERT: Phone removed while locked!', 'error', '🚨');
+    } else if (alert === 'TIME_EXPIRED_UNLOCKING') {
+      toast('⏰ Lock time completed — box opening!', 'success');
+      addLog('Lock time expired — auto unlocking', 'unlock', '⏰');
+    } else if (alert === 'EMERGENCY_UNLOCK_EXECUTED') {
+      toast('🚨 Emergency unlock executed', 'warn');
+      addLog('Emergency unlock by ESP32', 'warn', '🚨');
+    }
+  }
+});
+
+db.ref('/box/stats').on('value', snap => {
+  const s = snap.val() || {};
+  statsSnapshot = s;
+  document.getElementById('dailyUsage').textContent    = Math.round((s.dailyUsage  || 0) / 60);
+  document.getElementById('weeklyUsage').textContent   = Math.round((s.weeklyUsage || 0) / 60);
+  document.getElementById('totalSessions').textContent = s.totalSessions || 0;
+  document.getElementById('longestLock').textContent   = s.longestLock   || 0;
+  document.getElementById('sessVal').textContent       = s.totalSessions || 0;
+  if (s.weeklyBreakdown) {
+    const days = ['mon','tue','wed','thu','fri','sat','sun'];
+    weekChart.data.datasets[0].data = days.map(d => Math.round((s.weeklyBreakdown[d]||0)/60));
+    weekChart.update();
+  }
+});
+
+db.ref('/box/device').on('value', snap => {
+  const d = snap.val() || {};
+  document.getElementById('wifiVal').textContent  = d.wifi  || '--';
+  document.getElementById('rssiVal').textContent  = d.rssi  || '--';
+  lastEsp32Seen = d.lastSeen || 0;
+  updateEsp32Pill();
+});
+
+db.ref('/box/schedule').on('value', snap => {
+  const s = snap.val() || {};
+  if (s.study) {
+    document.getElementById('studyTimeDisplay').textContent = `${s.study.start} – ${s.study.end}`;
+    setToggle('studyToggle', s.study.enabled);
+  }
+  if (s.sleep) {
+    document.getElementById('sleepTimeDisplay').textContent = `${s.sleep.start} – ${s.sleep.end}`;
+    setToggle('sleepToggle', s.sleep.enabled);
+  }
+});
+
+db.ref('.info/connected').on('value', snap => {
+  const online = !!snap.val();
+  const pill   = document.getElementById('fbPill');
+  pill.className = 'fb-pill ' + (online ? 'online' : 'offline');
+  document.getElementById('fbText').textContent = online ? 'FIREBASE' : 'OFFLINE';
+  if (online) addLog('Firebase connected', 'info', '🔗');
+});
+
+setInterval(updateEsp32Pill, 10000);
+
+function updateEsp32Pill() {
+  const pill = document.getElementById('espPill');
+  const text = document.getElementById('espText');
+  const now  = Math.floor(Date.now() / 1000);
+  const diff = now - lastEsp32Seen;
+
+  if (lastEsp32Seen === 0) {
+    pill.className = 'esp-pill offline';
+    text.textContent = 'ESP32 OFFLINE';
+    document.getElementById('lastSeenVal').textContent = '--';
+  } else if (diff < 30) {
+    pill.className = 'esp-pill online';
+    text.textContent = 'ESP32 ONLINE';
+    document.getElementById('lastSeenVal').textContent = diff + 's ago';
+  } else if (diff < 120) {
+    pill.className = 'esp-pill stale';
+    text.textContent = 'ESP32 STALE';
+    document.getElementById('lastSeenVal').textContent = diff + 's ago';
+  } else {
+    pill.className = 'esp-pill offline';
+    text.textContent = 'ESP32 OFFLINE';
+    document.getElementById('lastSeenVal').textContent = Math.floor(diff/60) + 'm ago';
+  }
+}
+
+// ============================================================
+//  COMMANDS
+// ============================================================
+function sendLock() {
+  if (!validatePin()) return;
+  const mins = parseInt(document.getElementById('durationInput').value);
+  if (!mins || mins < 1 || mins > 300) { toast('❌ Duration: 1–300 min', 'error'); return; }
+
+  // Write command + timestamp so ESP32 always sees a NEW value
+  db.ref('/box').update({
+    'control/command':   'LOCK',
+    'control/duration':  mins,
+    'control/timestamp': Date.now(),
+    'lockDuration':      mins
+  }).then(() => {
+    toast(`🔒 Lock sent — ${mins} min`, 'success');
+    addLog(`Lock command: ${mins} min`, 'lock', '🔒');
+  }).catch(e => toast('❌ ' + e.message, 'error'));
+}
+
+function sendUnlock() {
+  if (!validatePin()) return;
+  db.ref('/box/control').update({
+    command:   'UNLOCK',
+    timestamp: Date.now()
+  }).then(() => {
+    toast('🔓 Unlock sent', 'success');
+    addLog('Unlock command', 'unlock', '🔓');
+  }).catch(e => toast('❌ ' + e.message, 'error'));
+}
+
+function openEmergencyModal()  { document.getElementById('emergencyModal').classList.add('open'); }
+function closeEmergencyModal() { document.getElementById('emergencyModal').classList.remove('open'); document.getElementById('emergencyPin').value = ''; }
+
+function emergencyUnlock() {
+  if (document.getElementById('emergencyPin').value !== EMERGENCY_PASS) {
+    toast('❌ Wrong emergency password!', 'error');
+    addLog('Failed emergency attempt!', 'error', '🚨');
+    closeEmergencyModal(); return;
+  }
+  db.ref('/box/control').update({ command: 'EMERGENCY_UNLOCK', timestamp: Date.now() })
+    .then(() => { toast('🚨 Emergency unlock sent', 'warn'); addLog('EMERGENCY UNLOCK sent', 'warn', '🚨'); closeEmergencyModal(); });
+}
+
+// ============================================================
+//  SCHEDULE
+// ============================================================
+function saveSchedule() {
+  const type  = document.getElementById('schedType').value;
+  const start = document.getElementById('schedStart').value;
+  const end   = document.getElementById('schedEnd').value;
+  if (!start || !end) { toast('❌ Set both times', 'error'); return; }
+  db.ref(`/box/schedule/${type}`).update({ start, end, enabled: true })
+    .then(() => { toast(`✅ ${type} schedule saved`, 'success'); addLog(`Schedule: ${type} ${start}–${end}`, 'info', '📅'); });
+}
+
+function toggleSchedule(type) {
+  const t = document.getElementById(type + 'Toggle');
+  const v = !t.classList.contains('active');
+  db.ref(`/box/schedule/${type}`).update({ enabled: v })
+    .then(() => { setToggle(type + 'Toggle', v); toast(`${type} ${v ? 'enabled' : 'disabled'}`, 'success'); });
+}
+
+function setToggle(id, val) {
+  document.getElementById(id).className = 'toggle' + (val ? ' active' : '');
+}
+
+// ============================================================
+//  UI UPDATES
+// ============================================================
+function updateStatusUI() {
+  const card    = document.getElementById('statusCard');
+  const main    = document.getElementById('statusMain');
+  const sub     = document.getElementById('statusSub');
+  const visual  = document.getElementById('boxVisual');
+  const emoji   = document.getElementById('boxEmoji');
+  const s1      = document.getElementById('s1badge');
+  const s2      = document.getElementById('s2badge');
+  const lockBtn = document.getElementById('lockBtn');
+  const unlBtn  = document.getElementById('unlockBtn');
+  const phonePill = document.getElementById('phonePill');
+
+  if (isLocked) {
+    card.className   = 'card card-status locked';
+    main.className   = 'status-main locked';
+    main.textContent = 'LOCKED';
+    sub.textContent  = '🔒 Phone secured — Servo1:0° Servo2:0° — Stay focused!';
+    visual.className = 'box-visual locked';
+    emoji.textContent= '🔒';
+    s1.textContent   = 'S1: 0°';
+    s2.textContent   = 'S2: 0°';
+    s1.classList.add('active'); s2.classList.add('active');
+    lockBtn.disabled = true;
+    unlBtn.disabled  = false;
+    phonePill.style.display = 'flex';
+  } else {
+    card.className   = 'card card-status unlocked';
+    main.className   = 'status-main unlocked';
+    main.textContent = 'UNLOCKED';
+    sub.textContent  = '📦 Box open — Servo1:90° Servo2:180° — Place phone and lock.';
+    visual.className = 'box-visual unlocked';
+    emoji.textContent= '📦';
+    s1.textContent   = 'S1: 90°';
+    s2.textContent   = 'S2: 180°';
+    s1.classList.remove('active'); s2.classList.remove('active');
+    lockBtn.disabled = false;
+    unlBtn.disabled  = true;
+    phonePill.style.display = 'none';
+    document.getElementById('timerDisplay').textContent = '--:--:--';
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('progressPct').textContent  = '0%';
+  }
+  updatePhoneUI();
+}
+
+function updatePhoneUI() {
+  const big   = document.getElementById('phoneBig');
+  const label = document.getElementById('phoneLabel');
+  const sub   = document.getElementById('phoneSub');
+  const pill  = document.getElementById('phonePill');
+  const pIcon = document.getElementById('phoneIcon');
+  const pText = document.getElementById('phoneText');
+
+  if (!isLocked) {
+    big.textContent = '📦'; label.className = 'phone-label absent';
+    label.textContent = 'BOX OPEN'; sub.textContent = 'Sensor active only when locked';
+    pill.style.display = 'none'; return;
+  }
+  pill.style.display = 'flex';
+  if (phoneInside) {
+    big.textContent = '📱'; label.className = 'phone-label detected';
+    label.textContent = 'PHONE INSIDE'; sub.textContent = '✅ Phone detected — box is secure';
+    pill.className = 'phone-pill detected'; pIcon.textContent = '📱'; pText.textContent = 'PHONE IN';
+  } else {
+    big.textContent = '❌'; label.className = 'phone-label alert';
+    label.textContent = 'NO PHONE!'; sub.textContent = '⚠️ Phone not detected — check box!';
+    pill.className = 'phone-pill alert'; pIcon.textContent = '⚠️'; pText.textContent = 'PHONE OUT';
+  }
+}
+
+function updateTimer() {
+  const el = document.getElementById('timerDisplay');
+  const pf = document.getElementById('progressFill');
+  const pp = document.getElementById('progressPct');
+  if (!isLocked || lockRemaining <= 0) {
+    el.textContent = '--:--:--'; pf.style.width = '0%'; pp.textContent = '0%'; return;
+  }
+  const h = Math.floor(lockRemaining / 3600);
+  const m = Math.floor((lockRemaining % 3600) / 60);
+  const s = lockRemaining % 60;
+  el.textContent = `${pad(h)}:${pad(m)}:${pad(s)}`;
+  if (lockDurationS > 0) {
+    const pct = Math.min(((lockDurationS - lockRemaining) / lockDurationS) * 100, 100);
+    pf.style.width = pct.toFixed(1) + '%';
+    pp.textContent = pct.toFixed(0) + '%';
+  }
+}
+
+// ============================================================
+//  AI PANEL — TAB SWITCHER
+// ============================================================
+function switchAiTab(tab) {
+  document.querySelectorAll('.ai-tab').forEach((t,i) => {
+    const tabs = ['chat','suggest','schedule'];
+    t.classList.toggle('active', tabs[i] === tab);
+  });
+  document.querySelectorAll('.ai-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('pane-' + tab).classList.add('active');
+}
+
+// ============================================================
+//  AI CHAT — calls Claude API
+// ============================================================
+function buildSystemPrompt() {
+  const s = statsSnapshot;
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  let weeklyBreakdown = '';
+  if (s.weeklyBreakdown) {
+    weeklyBreakdown = days.map((d,i) => {
+      const key = ['mon','tue','wed','thu','fri','sat','sun'][i];
+      return `${d}: ${Math.round((s.weeklyBreakdown[key]||0)/60)} min`;
+    }).join(', ');
+  }
+
+  return `You are FocusBox AI, a helpful parental control assistant built into the FocusBox system — a physical phone lock box for children.
+
+CURRENT REAL-TIME DATA:
+- Box status: ${isLocked ? 'LOCKED' : 'UNLOCKED'}
+- Phone inside box: ${phoneInside}
+- Time remaining: ${lockRemaining}s (${Math.floor(lockRemaining/60)} min)
+- Daily usage locked: ${Math.round((s.dailyUsage||0)/60)} min today
+- Weekly usage locked: ${Math.round((s.weeklyUsage||0)/60)} min this week
+- Total sessions: ${s.totalSessions || 0}
+- Longest lock: ${s.longestLock || 0} min
+- Weekly breakdown: ${weeklyBreakdown || 'no data yet'}
+- ESP32 last seen: ${lastEsp32Seen ? new Date(lastEsp32Seen*1000).toLocaleTimeString() : 'offline'}
+
+Your role: Help parents make smart decisions about their child's phone usage. Be warm, practical, and concise. Give actionable advice. Reference the real data above in your answers. Keep responses under 120 words.`;
+}
+
+const chatHistory = [];
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  appendChatMsg(msg, 'user');
+  chatHistory.push({ role:'user', content: msg });
+
+  const sendBtn = document.getElementById('chatSendBtn');
+  sendBtn.disabled = true;
+  sendBtn.textContent = '...';
+
+  const thinking = appendChatMsg('Thinking...', 'ai', true);
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'YOUR_ANTHROPIC_API_KEY',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 400,
+        system:     buildSystemPrompt(),
+        messages:   chatHistory
+      })
+    });
+    const data   = await res.json();
+    const reply  = data.content?.[0]?.text || 'Sorry, I could not get a response.';
+    thinking.remove();
+    appendChatMsg(reply, 'ai');
+    chatHistory.push({ role:'assistant', content: reply });
+    if (chatHistory.length > 20) chatHistory.splice(0, 2);
+  } catch(e) {
+    thinking.remove();
+    appendChatMsg('Connection error. Check your network.', 'ai');
+  }
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send ✦';
+}
+
+function quickAsk(q) {
+  document.getElementById('chatInput').value = q;
+  sendChat();
+}
+
+function appendChatMsg(text, role, thinking=false) {
+  const box = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}${thinking ? ' thinking' : ''}`;
+  if (role === 'ai') {
+    div.innerHTML = `<div class="msg-label">FOCUSBOX AI</div>${text}`;
+  } else {
+    div.textContent = text;
+  }
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+// ============================================================
+//  AI SUGGESTIONS — lock duration recommendations
+// ============================================================
+async function generateSuggestions() {
+  const bar  = document.getElementById('sugStatusBar');
+  const grid = document.getElementById('suggestionGrid');
+  bar.classList.add('show');
+  document.getElementById('sugStatusText').textContent = 'Analyzing usage patterns with AI...';
+
+  const s = statsSnapshot;
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  let weeklyText = days.map(d => `${d}: ${Math.round((s.weeklyBreakdown?.[d]||0)/60)} min`).join(', ');
+
+  const prompt = `You are FocusBox AI. Analyze this child's phone lock data and return ONLY valid JSON (no markdown, no explanation):
+{
+  "study": { "minutes": <number 30-120>, "reason": "<one sentence>" },
+  "bedtime": { "minutes": <number 60-480>, "reason": "<one sentence>" },
+  "weekend": { "minutes": <number 30-180>, "reason": "<one sentence>" }
+}
+
+Usage data:
+- Daily average locked: ${Math.round((s.dailyUsage||0)/60)} min
+- Total sessions: ${s.totalSessions||0}
+- Longest session: ${s.longestLock||0} min
+- Weekly breakdown: ${weeklyText}
+
+Base suggestions on the data. If data is low (child has few sessions), suggest starting with moderate durations.`;
+
+  try {
+    const res  = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': 'YOUR_ANTHROPIC_API_KEY',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:300,
+        messages:[{ role:'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    let raw    = data.content?.[0]?.text || '{}';
+    raw        = raw.replace(/```json|```/g,'').trim();
+    const sug  = JSON.parse(raw);
+
+    grid.innerHTML = `
+      <div class="suggestion-card">
+        <div class="sug-label">STUDY SESSION</div>
+        <div class="sug-val">${sug.study?.minutes || 45}</div>
+        <div class="sug-unit">minutes</div>
+        <div class="sug-reason">${sug.study?.reason || ''}</div>
+        <button class="btn-apply-sug" onclick="applyDuration(${sug.study?.minutes||45})">Apply This Duration</button>
+      </div>
+      <div class="suggestion-card">
+        <div class="sug-label">BEDTIME LOCK</div>
+        <div class="sug-val">${sug.bedtime?.minutes || 120}</div>
+        <div class="sug-unit">minutes</div>
+        <div class="sug-reason">${sug.bedtime?.reason || ''}</div>
+        <button class="btn-apply-sug" onclick="applyDuration(${sug.bedtime?.minutes||120})">Apply This Duration</button>
+      </div>
+      <div class="suggestion-card">
+        <div class="sug-label">WEEKEND LOCK</div>
+        <div class="sug-val">${sug.weekend?.minutes || 60}</div>
+        <div class="sug-unit">minutes</div>
+        <div class="sug-reason">${sug.weekend?.reason || ''}</div>
+        <button class="btn-apply-sug" onclick="applyDuration(${sug.weekend?.minutes||60})">Apply This Duration</button>
+      </div>`;
+    addLog('AI generated lock duration suggestions', 'info', '🤖');
+  } catch(e) {
+    addLog('AI suggestion error: ' + e.message, 'error', '❌');
+    toast('❌ AI error — try again', 'error');
+  }
+  bar.classList.remove('show');
+}
+
+function applyDuration(mins) {
+  document.getElementById('durationInput').value = mins;
+  toast(`✅ Duration set to ${mins} min — enter PIN and lock`, 'success');
+  addLog(`AI suggestion applied: ${mins} min`, 'info', '🤖');
+}
+
+// ============================================================
+//  AI SCHEDULE — auto-generate study + sleep times
+// ============================================================
+async function generateSchedule() {
+  const bar  = document.getElementById('schedStatusBar');
+  const grid = document.getElementById('scheduleGrid');
+  bar.classList.add('show');
+  document.getElementById('schedStatusText').textContent = 'Generating smart schedule...';
+
+  const s = statsSnapshot;
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  let weeklyText = days.map(d => `${d}: ${Math.round((s.weeklyBreakdown?.[d]||0)/60)} min`).join(', ');
+
+  const prompt = `You are FocusBox AI. Based on a child's usage patterns, suggest an auto-lock schedule. Return ONLY valid JSON (no markdown):
+{
+  "study": { "start": "HH:MM", "end": "HH:MM", "reason": "<one sentence>" },
+  "sleep": { "start": "HH:MM", "end": "HH:MM", "reason": "<one sentence>" }
+}
+
+Child usage data:
+- Daily locked: ${Math.round((s.dailyUsage||0)/60)} min today
+- Weekly locked: ${Math.round((s.weeklyUsage||0)/60)} min
+- Sessions: ${s.totalSessions||0}
+- Weekly breakdown: ${weeklyText}
+
+Rules:
+- Study lock: typically after school hours (15:00–20:00 range)
+- Sleep lock: typically 21:00–07:00
+- Suggest realistic times based on the data, starting conservative if data is sparse`;
+
+  try {
+    const res  = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': 'YOUR_ANTHROPIC_API_KEY',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:300,
+        messages:[{ role:'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    let raw    = data.content?.[0]?.text || '{}';
+    raw        = raw.replace(/```json|```/g,'').trim();
+    const sched = JSON.parse(raw);
+
+    const study = sched.study || { start:'17:00', end:'19:00', reason:'Standard after-school study time.' };
+    const sleep = sched.sleep || { start:'21:30', end:'07:00', reason:'Ensures 8-9 hours of sleep.' };
+
+    grid.innerHTML = `
+      <div class="ai-sched-card">
+        <div class="sched-type">📚 STUDY SCHEDULE</div>
+        <div class="sched-times">${study.start} – ${study.end}</div>
+        <div class="sched-reason">${study.reason}</div>
+        <button class="btn-apply-sched" onclick="applySchedule('study','${study.start}','${study.end}')">Apply to Schedule</button>
+      </div>
+      <div class="ai-sched-card">
+        <div class="sched-type">😴 SLEEP SCHEDULE</div>
+        <div class="sched-times">${sleep.start} – ${sleep.end}</div>
+        <div class="sched-reason">${sleep.reason}</div>
+        <button class="btn-apply-sched" onclick="applySchedule('sleep','${sleep.start}','${sleep.end}')">Apply to Schedule</button>
+      </div>`;
+    addLog('AI generated smart schedule', 'info', '🤖');
+  } catch(e) {
+    addLog('AI schedule error: ' + e.message, 'error', '❌');
+    toast('❌ AI error — try again', 'error');
+  }
+  bar.classList.remove('show');
+}
+
+function applySchedule(type, start, end) {
+  db.ref(`/box/schedule/${type}`).update({ start, end, enabled: true })
+    .then(() => {
+      toast(`✅ ${type} schedule applied: ${start}–${end}`, 'success');
+      addLog(`AI schedule applied: ${type} ${start}–${end}`, 'info', '🤖');
+    });
+}
+
+// ============================================================
+//  HELPERS
+// ============================================================
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function validatePin() {
+  const pin = document.getElementById('pinInput').value;
+  if (!pin) { toast('❌ Enter PIN first', 'error'); return false; }
+  if (pin !== ADMIN_PIN) {
+    toast('❌ Wrong PIN!', 'error');
+    addLog('Wrong PIN entered!', 'error', '🚨');
+    return false;
+  }
+  return true;
+}
+
+function addLog(msg, type = 'info', icon = 'ℹ️') {
+  const list = document.getElementById('logList');
+  const time = new Date().toTimeString().slice(0, 8);
+  const item = document.createElement('div');
+  item.className = `log-item ${type}`;
+  item.innerHTML = `<div class="log-time">${time}</div><div class="log-icon">${icon}</div><div>${msg}</div>`;
+  list.insertBefore(item, list.firstChild);
+  while (list.children.length > 50) list.removeChild(list.lastChild);
+}
+
+function clearLog() {
+  document.getElementById('logList').innerHTML = '';
+  addLog('Log cleared', 'info', '🗑️');
+}
+
+let toastTimer;
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+document.getElementById('emergencyModal').addEventListener('click', e => {
+  if (e.target.id === 'emergencyModal') closeEmergencyModal();
+});
+
+if ('Notification' in window) Notification.requestPermission();
+
+addLog('Dashboard initialized', 'info', '🚀');
+updatePhoneUI();
+</script>
+</body>
+</html>
